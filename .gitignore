@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Project specific
+yolov5/
+dataset_final/
+temp_dataset/
+temp_downloads/
+dataset/labels/
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
