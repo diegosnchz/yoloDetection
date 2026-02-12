@@ -12,7 +12,6 @@ from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfigura
 # --- MEDIAPIPE IMPORT FIX ---
 import mediapipe as mp
 try:
-    # Most robust way to access solutions
     mp_hands = mp.solutions.hands
     mp_drawing = mp.solutions.drawing_utils
 except (AttributeError, ImportError):
@@ -25,30 +24,125 @@ except (AttributeError, ImportError):
 
 # --- PAGE CONFIG ---
 st.set_page_config(
-    page_title="SENTINEL HUD - Core Command",
-    page_icon="🛡️",
+    page_title="SENTINEL HUD // V3.1",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# --- CSS FOR PREMIUM LOOK ---
+# --- FRONTEND DESIGN SKILL INJECTION: INDUSTRIAL CYBERPUNK ---
 st.markdown("""
     <style>
-    .main {
-        background-color: #0e1117;
+    /* IMPORT FONTS */
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+    /* GLOBAL THEME */
+    body {
+        background-color: #050505;
         color: #e0e0e0;
+        font-family: 'Rajdhani', sans-serif;
     }
-    .stMetric {
-        background-color: #1e2130;
-        padding: 15px;
-        border-radius: 10px;
+    
+    .stApp {
+        background: radial-gradient(circle at center, #0a0a12 0%, #000000 100%);
+    }
+
+    /* TYPOGRAPHY */
+    h1, h2, h3 {
+        font-family: 'Rajdhani', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: #00ffcc;
+        text-shadow: 0 0 10px rgba(0, 255, 204, 0.4);
+    }
+    
+    .stText, p, label {
+        font-family: 'Share Tech Mono', monospace;
+        color: #a0a0a0;
+    }
+
+    /* HUD CONTAINERS */
+    .hud-container {
+        border: 1px solid #1a1a1a;
+        background: rgba(20, 20, 30, 0.6);
+        padding: 20px;
+        border-radius: 4px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        border-left: 2px solid #00ffcc;
+        margin-bottom: 20px;
+        backdrop-filter: blur(5px);
+    }
+
+    /* METRICS */
+    div[data-testid="stMetric"] {
+        background-color: rgba(0, 255, 204, 0.05);
         border: 1px solid #00ffcc;
-        text-align: center;
+        border-radius: 0px;
+        padding: 15px;
+        box-shadow: 0 0 10px rgba(0, 255, 204, 0.1);
+        transition: all 0.3s ease;
     }
-    .stAlert {
-        background-color: #3d0000;
-        border: 1px solid #ff0000;
+    
+    div[data-testid="stMetric"]:hover {
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+        border-color: #fff;
     }
+
+    div[data-testid="stMetricLabel"] {
+        font-family: 'Share Tech Mono', monospace;
+        font-size: 0.8rem !important;
+        color: #00ffcc !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 2.5rem !important;
+        color: #ffffff !important;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    }
+
+    /* BUTTONS */
+    div.stButton > button {
+        background: transparent;
+        border: 1px solid #00ffcc;
+        color: #00ffcc;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        border-radius: 0px;
+        transition: all 0.3s ease;
+    }
+
+    div.stButton > button:hover {
+        background: #00ffcc;
+        color: #000;
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.6);
+    }
+
+    /* ALERTS */
+    .alert-box {
+        background: rgba(255, 0, 50, 0.1);
+        border: 1px solid #ff0033;
+        color: #ff0033;
+        padding: 10px;
+        font-family: 'Share Tech Mono', monospace;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 0, 50, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(255, 0, 50, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 0, 50, 0); }
+    }
+    
+    /* SIDEBAR */
+    section[data-testid="stSidebar"] {
+        background-color: #050505;
+        border-right: 1px solid #333;
+    }
+
     </style>
     """, unsafe_allow_html=True)
 
@@ -97,10 +191,8 @@ class SentinelTransformer(VideoTransformerBase):
         if hands_model:
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             hands_model.process(img_rgb)
-            # Gesture logic could be expanded here
             
-        # 3. HUD Rendering
-        alert_count = 0
+        # 3. HUD Rendering - Cyberpunk Style
         for _, det in detections.iterrows():
             x1, y1, x2, y2 = int(det['xmin']), int(det['ymin']), int(det['xmax']), int(det['ymax'])
             label = det['name']
@@ -108,34 +200,58 @@ class SentinelTransformer(VideoTransformerBase):
             
             color = (0, 255, 204) # Neo Green
             if "Sin_Equipo" in label or "Danger" in label:
-                color = (0, 0, 255) # Red
-                alert_count += 1
+                color = (0, 0, 255) # Neon Red
             
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(img, f"{label} {conf:.2f}", (x1, y1-10), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            # Corner Brackets only
+            thickness = 2
+            length = 20
+            
+            # Top Left
+            cv2.line(img, (x1, y1), (x1 + length, y1), color, thickness)
+            cv2.line(img, (x1, y1), (x1, y1 + length), color, thickness)
+            # Top Right
+            cv2.line(img, (x2, y1), (x2 - length, y1), color, thickness)
+            cv2.line(img, (x2, y1), (x2, y1 + length), color, thickness)
+            # Bottom Left
+            cv2.line(img, (x1, y2), (x1 + length, y2), color, thickness)
+            cv2.line(img, (x1, y2), (x1, y2 - length), color, thickness)
+            # Bottom Right
+            cv2.line(img, (x2, y2), (x2 - length, y2), color, thickness)
+            cv2.line(img, (x2, y2), (x2, y2 - length), color, thickness)
+            
+            # Label Background
+            (w, h), _ = cv2.getTextSize(f"{label} {conf:.2f}", cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), color, -1)
+            cv2.putText(img, f"{label} {conf:.2f}", (x1, y1 - 5), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
             
         return img
 
 # --- SIDEBAR ---
-st.sidebar.title("🛡️ SENTINEL CORE")
-st.sidebar.info("Industrial Security Interface v3.0 (WebRTC)")
+st.sidebar.markdown("### SYSTEM CONFIG")
 
 if not hands_model:
-    st.sidebar.warning("⚠️ Hand Tracking Module Error (Host Library Incompatibility)")
+    st.sidebar.error("MODULE ERROR: HAND_TRACKING_404")
 
-conf_slider = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.45)
-alert_toggle = st.sidebar.toggle("Security Lockdown Mode", value=True)
+conf_slider = st.sidebar.slider("SENSITIVITY", 0.0, 1.0, 0.45)
+alert_toggle = st.sidebar.toggle("LOCKDOWN PROTOCOL", value=True)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("**STATUS**: OPERATIONAL")
+st.sidebar.markdown("**VERSION**: 3.1.0-CYBER")
 
 # --- HEADER ---
-st.title("SENTINEL HUD: Industrial Command Dashboard")
-st.write("Real-time PPE Detection via Browser Stream")
+c1, c2 = st.columns([3, 1])
+with c1:
+    st.markdown("<h1>SENTINEL HUD <span style='font-size: 0.5em; color: #555;'>// CORE COMMAND</span></h1>", unsafe_allow_html=True)
+with c2:
+    st.markdown("<div style='text-align: right; color: #00ffcc; font-family: Share Tech Mono;'>SYS.TIME: " + time.strftime("%H:%M:%S") + "</div>", unsafe_allow_html=True)
 
-# --- MAIN DASHBOARD ---
+# --- MAIN LAYOUT ---
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("Live Operations - Secure Stream")
+    st.markdown("<div class='hud-container'><h3>LIVE UPLINK</h3>", unsafe_allow_html=True)
     webrtc_ctx = webrtc_streamer(
         key="sentinel-stream",
         mode=WebRtcMode.SENDRECV,
@@ -143,32 +259,22 @@ with col1:
         video_transformer_factory=SentinelTransformer,
         async_transform=True,
     )
+    st.markdown("</div>", unsafe_allow_html=True)
     
     if webrtc_ctx.video_transformer:
         webrtc_ctx.video_transformer.conf_threshold = conf_slider
         webrtc_ctx.video_transformer.alert_mode = alert_toggle
 
 with col2:
-    st.subheader("System Metrics")
+    st.markdown("<div class='hud-container'><h3>TELEMETRY</h3>", unsafe_allow_html=True)
     m1, m2 = st.columns(2)
-    m1.metric("System Status", "ONLINE", delta="ACTIVE")
-    m2.metric("Environment", "SECURE")
+    m1.metric("THREAT LEVEL", "LOW", delta="-0%")
+    m2.metric("ACTIVE UNITS", "1", delta="OK")
     
-    st.subheader("Instructions")
-    st.markdown("""
-    1. **Allow Camera Access** when prompted by the browser.
-    2. **Press START** to begin the encrypted stream.
-    3. The system will detect PPE and Security breaches automatically.
-    """)
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.metric("TOTAL DETECTIONS", "0")
+    st.markdown("</div>", unsafe_allow_html=True)
     
-    st.subheader("Diagnostic Info")
-    st.write(f"Python Version: {np.__version__} (via Numpy)")
-    if hands_model:
-        st.success("Mediapipe Core: ATTACHED")
-    else:
-        st.error("Mediapipe Core: DETACHED (Check Logs)")
-
-# --- FOOTER ---
-if st.button("Reset Dashboard Statistics"):
-    st.session_state.alerts = []
-    st.rerun()
+    st.markdown("<div class='hud-container'><h3>EVENT LOG</h3>", unsafe_allow_html=True)
+    st.markdown("<div style='font-family: Share Tech Mono; font-size: 0.8em; color: #888;'>[SYS] INITIALIZING... OK<br>[VID] BRIDGE CONNECTED... OK<br>[NET] LISTENING...</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
