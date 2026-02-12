@@ -41,12 +41,16 @@ python dataset_builder.py
 ### 2. Train Model
 Upload `Entrenamiento_YOLO.ipynb` and the zipped `dataset` folder to Google Colab. Run all cells to obtain `best.pt`.
 
-### 3. Run Inference
-Place the trained `best.pt` in the project root and run:
+### 3. Run with Docker
+If you prefer to use Docker to manage dependencies:
 ```bash
-python app_hud.py
+# Build the image
+docker compose build
+
+# Run the container
+docker compose up
 ```
-*Note: If `best.pt` is not present, the app will run with a standard YOLOv5 model for demonstration.*
+*Note: To see the GUI window, you need an X-Server installed on your host (like VcXsrv) and configured to allow connections.*
 
 ## Interaction
-Hold your hand in front of the camera. Point your **Index Finger** at any detected object's bounding box to trigger the augmented HUD analysis.
+Point your webcam at safety gear (or images of them). Use your **Index Finger** to "touch" any detected object's bounding box to trigger the augmented HUD analysis.

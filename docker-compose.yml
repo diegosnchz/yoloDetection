@@ -1,0 +1,11 @@
+services:
+  sentinel-hud:
+    build: .
+    container_name: sentinel_hud_container
+    volumes:
+      - .:/app
+    environment:
+      - DISPLAY=host.docker.internal:0.0
+    network_mode: "host"
+    # Note: Webcam access in Docker varies by OS. 
+    # For Windows/Mac, usually requires mounting the device or using a stream.
