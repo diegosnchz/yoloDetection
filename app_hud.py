@@ -24,13 +24,14 @@ else:
     model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 
 # MediaPipe Hands
-mp_hands = mp.solutions.hands
+import mediapipe.python.solutions.hands as mp_hands
+import mediapipe.python.solutions.drawing_utils as mp_drawing
+
 hands = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=2,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5)
-mp_drawing = mp.solutions.drawing_utils
 
 # --- UTILS ---
 def is_inside(point, box):

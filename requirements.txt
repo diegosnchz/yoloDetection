@@ -7,4 +7,14 @@ numpy
 ultralytics
 seaborn
 pandas
+tqdm
 pyyaml
+gitpython
+matplotlib
+scipy
+Pillow
+requests
+streamlit
+streamlit-webrtc
+av
+plotly

@@ -11,7 +11,13 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     libxrender-dev \
+    libusb-1.0-0 \
+    libgtk-3-0 \
+    pkg-config \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONUNBUFFERED=1
 
 # Copy the requirements file into the container at /app
 COPY requirements.txt .
@@ -25,5 +31,8 @@ COPY . .
 # Set environment variables for GUI (optional, requires host config)
 ENV DISPLAY=host.docker.internal:0.0
 
-# Run app_hud.py when the container launches
-CMD ["python", "app_hud.py"]
+# Expose port for Streamlit
+EXPOSE 8501
+
+# Run app_dashboard.py when the container launches
+CMD ["streamlit", "run", "app_dashboard.py", "--server.address=0.0.0.0"]

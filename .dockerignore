@@ -1,0 +1,9 @@
+.git
+dataset
+__pycache__
+*.pyc
+.ipynb_checkpoints
+temp_downloads
+best.pt
+yolov5/runs
+runs

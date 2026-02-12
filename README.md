@@ -2,11 +2,12 @@
 
 SENTINEL HUD is an advanced industrial safety system that combines real-time object detection with futuristic gesture-based interaction. Designed for Industry 4.0, it monitors the use of Personal Protective Equipment (PPE) and provides a "Minority Report" style interface for operators.
 
-## Features
-
-- **Automated Dataset Generation**: Script to download and augment images simulating CCTV conditions (noise, blur, rain).
-- **YOLOv5 PPE Detection**: Real-time detection of Helmets, Vests, Persons without PPE, and Danger signs.
-- **MediaPipe Gesture Control**: Interact with detection boxes on-screen using hand gestures.
+## Key Features
+- **Professional Command Dashboard**: Web-based interface built with Streamlit for real-time monitoring.
+- **YOLOv5 Integration**: High-precision detection of PPE (Helmets, Vests) and danger zones.
+- **Gesture Control**: Interactive HUD elements controlled by hand gestures via MediaPipe.
+- **Security Analytics**: Real-time metrics and historical log of security breaches.
+- **Dockerized Environment**: Ready for industrial deployment with 1-click setup.
 - **Industrial HUD**: Futuristic head-up display with neon aesthetics and holographic analysis details.
 - **Security Alerts**: Visual red-flash alerts when safety breaches are detected.
 
@@ -41,16 +42,20 @@ python dataset_builder.py
 ### 2. Train Model
 Upload `Entrenamiento_YOLO.ipynb` and the zipped `dataset` folder to Google Colab. Run all cells to obtain `best.pt`.
 
-### 3. Run with Docker
-If you prefer to use Docker to manage dependencies:
+### 3. Run Professional Dashboard
+To launch the full industrial interface:
 ```bash
-# Build the image
-docker compose build
+python -m streamlit run app_dashboard.py
+```
 
-# Run the container
+### 4. Run with Docker
+If you prefer to use the containerized version:
+```bash
+docker compose build
 docker compose up
 ```
-*Note: To see the GUI window, you need an X-Server installed on your host (like VcXsrv) and configured to allow connections.*
 
 ## Interaction
-Point your webcam at safety gear (or images of them). Use your **Index Finger** to "touch" any detected object's bounding box to trigger the augmented HUD analysis.
+1. **Visual Monitoring**: See real-time detections and security metrics on the dashboard.
+2. **Gesture HUD**: Point your **Index Finger** at detection boxes in the video feed to trigger detailed HUD info.
+3. **Security Log**: Check the sidebar and status table for active alerts.
