@@ -4,9 +4,9 @@ import torch
 import numpy as np
 import time
 from pathlib import Path
+import sqlite3
+import tempfile
 import pandas as pd
-import plotly.express as px
-from PIL import Image
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration, WebRtcMode
 
 # --- MEDIAPIPE IMPORT FIX ---
@@ -146,14 +146,127 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+DB_PATH = Path(tempfile.gettempdir()) / "sentinel_events.db"
+
+
+def init_events_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts_unix REAL NOT NULL,
+            ts_iso TEXT NOT NULL,
+            label TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            severity TEXT NOT NULL,
+            source TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def clear_events_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("DELETE FROM events")
+    conn.commit()
+    conn.close()
+
+
+def insert_event(label: str, confidence: float, severity: str, source: str = "webrtc"):
+    now_unix = time.time()
+    now_iso = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now_unix))
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.execute(
+        "INSERT INTO events (ts_unix, ts_iso, label, confidence, severity, source) VALUES (?, ?, ?, ?, ?, ?)",
+        (now_unix, now_iso, label, float(confidence), severity, source),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_recent_events(limit: int = 30) -> pd.DataFrame:
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query(
+        "SELECT ts_iso, severity, label, confidence, source FROM events ORDER BY id DESC LIMIT ?",
+        conn,
+        params=(limit,),
+    )
+    conn.close()
+    return df
+
+
+def get_event_metrics() -> dict:
+    conn = sqlite3.connect(DB_PATH)
+    now_unix = time.time()
+    last_60s = now_unix - 60
+    last_5m = now_unix - 300
+
+    total_events = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+    high_last_60s = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE severity = 'ALTA' AND ts_unix >= ?",
+        (last_60s,),
+    ).fetchone()[0]
+    high_last_5m = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE severity = 'ALTA' AND ts_unix >= ?",
+        (last_5m,),
+    ).fetchone()[0]
+    medium_last_5m = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE severity = 'MEDIA' AND ts_unix >= ?",
+        (last_5m,),
+    ).fetchone()[0]
+
+    sev_df = pd.read_sql_query(
+        "SELECT severity, COUNT(*) AS count FROM events GROUP BY severity",
+        conn,
+    )
+    conn.close()
+
+    if high_last_5m > 0:
+        threat = "HIGH"
+    elif medium_last_5m > 2:
+        threat = "MEDIUM"
+    else:
+        threat = "LOW"
+
+    return {
+        "total_events": total_events,
+        "high_last_60s": high_last_60s,
+        "high_last_5m": high_last_5m,
+        "medium_last_5m": medium_last_5m,
+        "threat": threat,
+        "severity_counts": sev_df,
+    }
+
+
+def severity_for_label(label: str) -> str:
+    label_l = label.lower()
+    if "sin_equipo" in label_l or "danger" in label_l or "peligro" in label_l:
+        return "ALTA"
+    if "persona" in label_l:
+        return "MEDIA"
+    return "BAJA"
+
 # --- LOAD MODELS ---
 @st.cache_resource
 def load_yolo():
-    model_path = Path('best.pt')
+    project_root = Path(__file__).resolve().parent
+    model_path = project_root / 'best.pt'
+    local_repo = project_root / "yolov5"
+    if local_repo.exists():
+        local_repo_path = str(local_repo.resolve())
+        if model_path.exists():
+            model = torch.hub.load(local_repo_path, 'custom', path=str(model_path), source='local')
+        else:
+            model = torch.hub.load(local_repo_path, 'yolov5s', source='local')
+        return model
+
     if model_path.exists():
-        model = torch.hub.load('ultralytics/yolov5', 'custom', path=str(model_path))
+        model = torch.hub.load('ultralytics/yolov5', 'custom', path=str(model_path), trust_repo=True)
     else:
-        model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+        model = torch.hub.load('ultralytics/yolov5', 'yolov5s', trust_repo=True)
     return model
 
 @st.cache_resource
@@ -178,6 +291,8 @@ class SentinelTransformer(VideoTransformerBase):
     def __init__(self):
         self.conf_threshold = 0.45
         self.alert_mode = True
+        self.cooldown_seconds = 8
+        self.last_alert_by_key = {}
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -197,6 +312,7 @@ class SentinelTransformer(VideoTransformerBase):
             x1, y1, x2, y2 = int(det['xmin']), int(det['ymin']), int(det['xmax']), int(det['ymax'])
             label = det['name']
             conf = det['confidence']
+            severity = severity_for_label(label)
             
             color = (0, 255, 204) # Neo Green
             if "Sin_Equipo" in label or "Danger" in label:
@@ -224,8 +340,18 @@ class SentinelTransformer(VideoTransformerBase):
             cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), color, -1)
             cv2.putText(img, f"{label} {conf:.2f}", (x1, y1 - 5), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
+
+            if self.alert_mode and severity in {"ALTA", "MEDIA"}:
+                now_t = time.time()
+                alert_key = f"{severity}:{label}"
+                last_t = self.last_alert_by_key.get(alert_key, 0.0)
+                if now_t - last_t >= self.cooldown_seconds:
+                    insert_event(label=label, confidence=float(conf), severity=severity, source="webrtc")
+                    self.last_alert_by_key[alert_key] = now_t
             
         return img
+
+init_events_db()
 
 # --- SIDEBAR ---
 st.sidebar.markdown("### SYSTEM CONFIG")
@@ -235,6 +361,11 @@ if not hands_model:
 
 conf_slider = st.sidebar.slider("SENSITIVITY", 0.0, 1.0, 0.45)
 alert_toggle = st.sidebar.toggle("LOCKDOWN PROTOCOL", value=True)
+cooldown_slider = st.sidebar.slider("ALERT COOLDOWN (s)", 1, 60, 8)
+
+if st.sidebar.button("PURGE EVENT HISTORY"):
+    clear_events_db()
+    st.sidebar.success("EVENT HISTORY PURGED")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("**STATUS**: OPERATIONAL")
@@ -264,17 +395,41 @@ with col1:
     if webrtc_ctx.video_transformer:
         webrtc_ctx.video_transformer.conf_threshold = conf_slider
         webrtc_ctx.video_transformer.alert_mode = alert_toggle
+        webrtc_ctx.video_transformer.cooldown_seconds = cooldown_slider
 
 with col2:
+    metrics = get_event_metrics()
+    events_df = get_recent_events(limit=20)
+
     st.markdown("<div class='hud-container'><h3>TELEMETRY</h3>", unsafe_allow_html=True)
     m1, m2 = st.columns(2)
-    m1.metric("THREAT LEVEL", "LOW", delta="-0%")
-    m2.metric("ACTIVE UNITS", "1", delta="OK")
+    m1.metric("THREAT LEVEL", metrics["threat"])
+    m2.metric("ACTIVE ALERTS (60s)", str(metrics["high_last_60s"]))
     
     st.markdown("<br>", unsafe_allow_html=True)
-    st.metric("TOTAL DETECTIONS", "0")
+    st.metric("TOTAL EVENTS", str(metrics["total_events"]))
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='hud-container'><h3>SEVERITY MIX</h3>", unsafe_allow_html=True)
+    if metrics["severity_counts"].empty:
+        st.info("No events yet.")
+    else:
+        st.bar_chart(metrics["severity_counts"].set_index("severity"))
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("<div class='hud-container'><h3>EVENT LOG</h3>", unsafe_allow_html=True)
-    st.markdown("<div style='font-family: Share Tech Mono; font-size: 0.8em; color: #888;'>[SYS] INITIALIZING... OK<br>[VID] BRIDGE CONNECTED... OK<br>[NET] LISTENING...</div>", unsafe_allow_html=True)
+    if events_df.empty:
+        st.markdown("<div style='font-family: Share Tech Mono; font-size: 0.8em; color: #888;'>[SYS] WAITING FOR EVENTS...</div>", unsafe_allow_html=True)
+    else:
+        display_df = events_df.copy()
+        display_df["confidence"] = (display_df["confidence"] * 100).round(1).astype(str) + "%"
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        csv_data = display_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="EXPORT EVENTS CSV",
+            data=csv_data,
+            file_name="sentinel_events.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
     st.markdown("</div>", unsafe_allow_html=True)

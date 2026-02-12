@@ -5,6 +5,18 @@
 
 SENTINEL HUD es un sistema de monitorizacion de seguridad industrial en tiempo real basado en Deep Learning.
 
+## Novedades implementadas (MVP Pro)
+
+- Alertas por severidad con reglas para clases de riesgo (`ALTA`, `MEDIA`, `BAJA`).
+- Cooldown configurable para evitar spam de alertas en tiempo real.
+- Persistencia de eventos en SQLite (historial de timestamp, etiqueta, confianza y fuente).
+- Panel historico en Streamlit con:
+    - Telemetria de amenaza en vivo.
+    - Conteo de alertas activas en ventana reciente.
+    - Log tabular de eventos.
+    - Exportacion CSV del historial.
+    - Purga manual del historial desde sidebar.
+
 ## Descripcion
 Este proyecto implementa un detector de **Equipos de Proteccion Individual (EPIs)** utilizando **YOLOv5** entrenado sobre un dataset personalizado. El sistema es capaz de detectar:
 - Casco
@@ -34,6 +46,7 @@ Para garantizar la reproducibilidad del entorno y evitar conflictos de dependenc
     - Selecciona "WebRTC Stream" en el menu lateral.
     - Permite el acceso a la camara.
     - El sistema comenzara la inferencia en tiempo real.
+    - Si se detectan clases de riesgo, se registraran eventos en el historial.
 
 ## Estructura del Proyecto
 
