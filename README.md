@@ -1,61 +1,47 @@
-# SENTINEL HUD: INTERFAZ DE SEGURIDAD INDUSTRIAL
+# SENTINEL HUD - Proyecto Academico
 
-SENTINEL HUD is an advanced industrial safety system that combines real-time object detection with futuristic gesture-based interaction. Designed for Industry 4.0, it monitors the use of Personal Protective Equipment (PPE) and provides a "Minority Report" style interface for operators.
+**Asignatura**: Vision Artificial Avanzada
+**Alumno**: Diego Sanchez
 
-## Key Features
-- **Professional Command Dashboard**: Web-based interface built with Streamlit for real-time monitoring.
-- **YOLOv5 Integration**: High-precision detection of PPE (Helmets, Vests) and danger zones.
-- **Gesture Control**: Interactive HUD elements controlled by hand gestures via MediaPipe.
-- **Security Analytics**: Real-time metrics and historical log of security breaches.
-- **Dockerized Environment**: Ready for industrial deployment with 1-click setup.
-- **Industrial HUD**: Futuristic head-up display with neon aesthetics and holographic analysis details.
-- **Security Alerts**: Visual red-flash alerts when safety breaches are detected.
+SENTINEL HUD es un sistema de monitorizacion de seguridad industrial en tiempo real basado en Deep Learning.
 
-## Project Structure
+## Descripcion
+Este proyecto implementa un detector de **Equipos de Proteccion Individual (EPIs)** utilizando **YOLOv5** entrenado sobre un dataset personalizado. El sistema es capaz de detectar:
+- Casco
+- Chaleco
+- Persona (Sin EPI) -> Genera Alerta
+- Peligro
 
-- `dataset_builder.py`: Python script for dataset creation and augmentation.
-- `Entrenamiento_YOLO.ipynb`: Jupyter Notebook for training the model on Google Colab.
-- `app_hud.py`: Core application for real-time inference and HUD interaction.
-- `dataset.yaml`: Configuration for YOLO training.
-- `Reporte_Final.md`: Technical documentation of the project.
+## Instrucciones de Ejecucion (Environment Docker)
 
-## Installation
+Para garantizar la reproducibilidad del entorno y evitar conflictos de dependencias, el proyecto ha sido contenerizado.
 
-1. Install local dependencies:
-   ```bash
-   pip install icrawler opencv-python mediapipe torch torchvision numpy
-   ```
+### Prerrequisitos
+- Docker Desktop instalado y corriendo.
 
-2. Clone YOLOv5 (required for training and local hub loading):
-   ```bash
-   git clone https://github.com/ultralytics/yolov5
-   ```
+### Pasos para desplegar:
 
-## Usage
+1.  **Construir y levantar el contenedor**:
+    ```bash
+    docker-compose up --build
+    ```
 
-### 1. Build Dataset
-Run the builder to scrape images and prepare the YOLO structure:
-```bash
-python dataset_builder.py
-```
+2.  **Acceder al Dashboard**:
+    Abre tu navegador y visita:
+    `http://localhost:8501`
 
-### 2. Train Model
-Upload `Entrenamiento_YOLO.ipynb` and the zipped `dataset` folder to Google Colab. Run all cells to obtain `best.pt`.
+3.  **Uso**:
+    - Selecciona "WebRTC Stream" en el menu lateral.
+    - Permite el acceso a la camara.
+    - El sistema comenzara la inferencia en tiempo real.
 
-### 3. Run Professional Dashboard
-To launch the full industrial interface:
-```bash
-python -m streamlit run app_dashboard.py
-```
+## Estructura del Proyecto
 
-### 4. Run with Docker
-If you prefer to use the containerized version:
-```bash
-docker compose build
-docker compose up
-```
+- `SENTINEL_Entrega.ipynb`: **[Notebook Maestro]** Informe completo y codigo de entrenamiento.
+- `finalize_dataset.py`: Script de generacion del paquete de datos.
+- `app_dashboard.py`: Codigo fuente de la interfaz Streamlit.
+- `dataset_entrega.zip`: Dataset empaquetado para entrenamiento.
+- `Dockerfile`: Configuracion del entorno de produccion.
 
-## Interaction
-1. **Visual Monitoring**: See real-time detections and security metrics on the dashboard.
-2. **Gesture HUD**: Point your **Index Finger** at detection boxes in the video feed to trigger detailed HUD info.
-3. **Security Log**: Check the sidebar and status table for active alerts.
+---
+*Proyecto desarrollado para la evaluacion de Febrero 2026.*

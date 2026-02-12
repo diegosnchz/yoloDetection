@@ -1,0 +1,9 @@
+names:
+- Casco
+- Chaleco
+- Persona_Sin_EPI
+- Peligro
+nc: 4
+path: ../dataset_entrega
+train: images/train
+val: images/val
