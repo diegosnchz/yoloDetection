@@ -1,4 +1,4 @@
-# Use an official Python runtime as a parent image
+# Use an official Python runtime as a parent image, pinning to 3.10 for best compatibility
 FROM python:3.10-slim
 
 # Set the working directory in the container
