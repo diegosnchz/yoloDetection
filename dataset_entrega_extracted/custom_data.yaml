@@ -1,0 +1,9 @@
+names:
+- Casco
+- Chaleco
+- Persona_Sin_Equipo
+- Peligro
+nc: 4
+path: ../dataset_final
+train: images/train
+val: images/val

@@ -190,7 +190,7 @@ def get_event_metrics() -> dict:
 
 def severity_for_label(label: str) -> str:
     label_l = label.lower()
-    if "sin_equipo" in label_l or "danger" in label_l or "peligro" in label_l:
+    if "sin_equipo" in label_l or "sin_epi" in label_l or "danger" in label_l or "peligro" in label_l:
         return "ALTA"
     if "persona" in label_l:
         return "MEDIA"
