@@ -1,4 +1,6 @@
 import hashlib
+import os
+import pathlib
 import sqlite3
 import tempfile
 import time
@@ -96,6 +98,10 @@ st.markdown(
 )
 
 DB_PATH = Path(tempfile.gettempdir()) / "sentinel_events.db"
+DEFAULT_MODEL_NAME = "yolov5s"
+DEFAULT_UI_CONFIDENCE = 0.30
+AUTO_RETRY_MIN_CONFIDENCE = 0.25
+AUTO_RETRY_FACTOR = 0.7
 
 
 def init_events_db():
@@ -197,35 +203,170 @@ def severity_for_label(label: str) -> str:
     return "BAJA"
 
 
+def clamp_box(x1: float, y1: float, x2: float, y2: float, width: int, height: int) -> tuple[float, float, float, float]:
+    x1 = max(0.0, min(float(x1), float(width - 1)))
+    y1 = max(0.0, min(float(y1), float(height - 1)))
+    x2 = max(0.0, min(float(x2), float(width - 1)))
+    y2 = max(0.0, min(float(y2), float(height - 1)))
+    if x2 <= x1:
+        x2 = min(float(width - 1), x1 + 1.0)
+    if y2 <= y1:
+        y2 = min(float(height - 1), y1 + 1.0)
+    return x1, y1, x2, y2
+
+
+def region_box_from_anchor(
+    anchor: tuple[float, float, float, float],
+    region: tuple[float, float, float, float],
+    width: int,
+    height: int,
+) -> tuple[float, float, float, float]:
+    ax1, ay1, ax2, ay2 = anchor
+    aw = max(1.0, ax2 - ax1)
+    ah = max(1.0, ay2 - ay1)
+    rx1, ry1, rx2, ry2 = region
+    x1 = ax1 + aw * rx1
+    y1 = ay1 + ah * ry1
+    x2 = ax1 + aw * rx2
+    y2 = ay1 + ah * ry2
+    return clamp_box(x1, y1, x2, y2, width, height)
+
+
+def refine_detections(detections: pd.DataFrame, image_shape: tuple[int, int, int]) -> pd.DataFrame:
+    """Postprocess detections to avoid oversized false positives for PPE classes."""
+    if detections.empty:
+        return detections
+
+    h, w = image_shape[:2]
+    image_area = float(max(1, h * w))
+    refined = detections.copy()
+
+    label_series = refined["name"].astype(str).str.lower()
+    person_mask = label_series.str.contains("persona")
+    person_ref = None
+    if person_mask.any():
+        person_ref = refined.loc[person_mask].sort_values("confidence", ascending=False).iloc[0]
+        person_ref_box = (
+            float(person_ref["xmin"]),
+            float(person_ref["ymin"]),
+            float(person_ref["xmax"]),
+            float(person_ref["ymax"]),
+        )
+    else:
+        person_ref_box = None
+
+    drop_rows: list[int] = []
+    for idx, row in refined.iterrows():
+        label_l = str(row["name"]).lower()
+        x1 = float(row["xmin"])
+        y1 = float(row["ymin"])
+        x2 = float(row["xmax"])
+        y2 = float(row["ymax"])
+        box_area_ratio = max(0.0, (x2 - x1) * (y2 - y1)) / image_area
+
+        if "casco" in label_l and box_area_ratio > 0.22:
+            anchor = person_ref_box if person_ref_box is not None else (x1, y1, x2, y2)
+            nx1, ny1, nx2, ny2 = region_box_from_anchor(anchor, (0.30, 0.02, 0.72, 0.30), w, h)
+            refined.at[idx, "xmin"] = nx1
+            refined.at[idx, "ymin"] = ny1
+            refined.at[idx, "xmax"] = nx2
+            refined.at[idx, "ymax"] = ny2
+            new_area_ratio = max(0.0, (nx2 - nx1) * (ny2 - ny1)) / image_area
+            if new_area_ratio > 0.28:
+                drop_rows.append(idx)
+
+        if "chaleco" in label_l and box_area_ratio > 0.45:
+            anchor = person_ref_box if person_ref_box is not None else (x1, y1, x2, y2)
+            nx1, ny1, nx2, ny2 = region_box_from_anchor(anchor, (0.22, 0.25, 0.78, 0.80), w, h)
+            refined.at[idx, "xmin"] = nx1
+            refined.at[idx, "ymin"] = ny1
+            refined.at[idx, "xmax"] = nx2
+            refined.at[idx, "ymax"] = ny2
+
+        # Remove detections that are still unrealistically large for helmet/vest.
+        if "casco" in label_l:
+            cx1 = float(refined.at[idx, "xmin"])
+            cy1 = float(refined.at[idx, "ymin"])
+            cx2 = float(refined.at[idx, "xmax"])
+            cy2 = float(refined.at[idx, "ymax"])
+            area_ratio = max(0.0, (cx2 - cx1) * (cy2 - cy1)) / image_area
+            if area_ratio > 0.30:
+                drop_rows.append(idx)
+
+    if drop_rows:
+        refined = refined.drop(index=drop_rows, errors="ignore")
+
+    # Keep the strongest detection per class to reduce duplicate overlays.
+    refined = refined.sort_values("confidence", ascending=False)
+    refined = refined.drop_duplicates(subset=["name"], keep="first").reset_index(drop=True)
+    return refined
+
+
+def resolve_custom_model_path(project_root: Path) -> Path | None:
+    """Find an available custom YOLO model in known locations."""
+    candidates = [
+        project_root / "best.pt",
+        project_root / "yolov5" / "runs_academic" / "actividad1_50e" / "weights" / "best.pt",
+        project_root / "yolov5" / "runs_academic" / "actividad1_10e" / "weights" / "best.pt",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def ensure_cross_platform_checkpoint_loading() -> None:
+    """Allow loading checkpoints saved on Windows when running in Linux containers."""
+    if os.name != "nt":
+        pathlib.WindowsPath = pathlib.PosixPath
+
+
+def load_default_model(local_repo: Path):
+    if local_repo.exists():
+        return torch.hub.load(str(local_repo.resolve()), DEFAULT_MODEL_NAME, source="local")
+    return torch.hub.load("ultralytics/yolov5", DEFAULT_MODEL_NAME, trust_repo=True)
+
+
 @st.cache_resource
 def load_yolo():
     project_root = Path(__file__).resolve().parent
-    model_path = project_root / "best.pt"
     local_repo = project_root / "yolov5"
-    if not model_path.exists():
-        raise FileNotFoundError(f"No se encontro el modelo custom: {model_path}")
+    model_path = resolve_custom_model_path(project_root)
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    if local_repo.exists():
-        local_repo_path = str(local_repo.resolve())
-        model = torch.hub.load(local_repo_path, "custom", path=str(model_path), source="local")
+    if model_path is not None:
+        try:
+            ensure_cross_platform_checkpoint_loading()
+            if local_repo.exists():
+                local_repo_path = str(local_repo.resolve())
+                model = torch.hub.load(local_repo_path, "custom", path=str(model_path), source="local")
+            else:
+                model = torch.hub.load("ultralytics/yolov5", "custom", path=str(model_path), trust_repo=True)
+        except Exception as exc:
+            st.warning(
+                f"No se pudo cargar el modelo custom ({model_path.name}): {exc}. "
+                f"Se usara {DEFAULT_MODEL_NAME}."
+            )
+            model = load_default_model(local_repo)
+            model_path = None
     else:
-        model = torch.hub.load("ultralytics/yolov5", "custom", path=str(model_path), trust_repo=True)
+        model = load_default_model(local_repo)
 
     model.to(device)
     model.conf = 0.40
     model.eval()
-    return model, device
+    return model, device, model_path
 
 
 def run_inference(image_rgb: np.ndarray, conf_threshold: float) -> tuple[np.ndarray, pd.DataFrame]:
-    model, _device = load_yolo()
+    model, _device, _model_path = load_yolo()
     model.conf = conf_threshold
     image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
     results = model(image_bgr)
     detections = results.pandas().xyxy[0]
     detections = detections[detections["confidence"] >= conf_threshold].copy()
+    detections = refine_detections(detections, image_bgr.shape)
 
     annotated = image_bgr.copy()
     for _, det in detections.iterrows():
@@ -260,13 +401,20 @@ if "last_file_hash" not in st.session_state:
     st.session_state.last_file_hash = None
 if "last_conf_used" not in st.session_state:
     st.session_state.last_conf_used = None
+if "last_effective_conf" not in st.session_state:
+    st.session_state.last_effective_conf = None
+if "last_used_auto_retry" not in st.session_state:
+    st.session_state.last_used_auto_retry = False
 
 st.sidebar.markdown("### Sentinel Controls")
-conf_slider = st.sidebar.slider("Confidence", 0.0, 1.0, 0.45)
+conf_slider = st.sidebar.slider("Confidence", 0.0, 1.0, DEFAULT_UI_CONFIDENCE)
 alert_toggle = st.sidebar.toggle("Enable alerts", value=True)
 cooldown_slider = st.sidebar.slider("Cooldown (s)", 1, 60, 8)
-if not (Path(__file__).resolve().parent / "best.pt").exists():
-    st.sidebar.error("Falta best.pt en la raiz del proyecto. Copialo para usar el modelo custom de EPI.")
+custom_model_path = resolve_custom_model_path(Path(__file__).resolve().parent)
+if custom_model_path is None:
+    st.sidebar.warning("No se encontro modelo custom. Se usa yolov5s por defecto.")
+else:
+    st.sidebar.success(f"Modelo custom detectado: {custom_model_path.name}")
 if st.sidebar.button("Purge event history"):
     clear_events_db()
     st.sidebar.success("History cleared")
@@ -299,17 +447,24 @@ with col_left:
 
         if not same_input:
             image_rgb = np.array(Image.open(uploaded_file).convert("RGB"))
-            try:
-                with st.spinner("Loading model (first time) and running inference..."):
-                    annotated_bgr, detections_df = run_inference(image_rgb, conf_slider)
-            except FileNotFoundError as exc:
-                st.error(str(exc))
-                st.info("Copia best.pt en la raiz del proyecto y vuelve a ejecutar.")
-                st.stop()
+            with st.spinner("Loading model (first time) and running inference..."):
+                annotated_bgr, detections_df = run_inference(image_rgb, conf_slider)
+                effective_conf = conf_slider
+                used_auto_retry = False
+                if detections_df.empty and conf_slider > AUTO_RETRY_MIN_CONFIDENCE:
+                    retry_conf = max(AUTO_RETRY_MIN_CONFIDENCE, conf_slider * AUTO_RETRY_FACTOR)
+                    retry_annotated, retry_detections = run_inference(image_rgb, retry_conf)
+                    if not retry_detections.empty:
+                        annotated_bgr = retry_annotated
+                        detections_df = retry_detections
+                        effective_conf = retry_conf
+                        used_auto_retry = True
             st.session_state.last_result = annotated_bgr
             st.session_state.last_detections = detections_df
             st.session_state.last_file_hash = file_hash
             st.session_state.last_conf_used = conf_slider
+            st.session_state.last_effective_conf = effective_conf
+            st.session_state.last_used_auto_retry = used_auto_retry
         else:
             detections_df = st.session_state.last_detections
             st.info("Using cached result for this image and confidence.")
@@ -333,6 +488,11 @@ with col_left:
         if det_df.empty:
             st.info("No detections above confidence threshold.")
         else:
+            if st.session_state.last_used_auto_retry:
+                st.warning(
+                    f"No hubo detecciones en conf={conf_slider:.2f}; se aplico auto-retry con "
+                    f"conf={st.session_state.last_effective_conf:.2f}."
+                )
             view_df = det_df[["name", "confidence", "xmin", "ymin", "xmax", "ymax"]].copy()
             view_df["confidence"] = (view_df["confidence"] * 100).round(2).astype(str) + "%"
             st.dataframe(view_df, use_container_width=True, hide_index=True)
