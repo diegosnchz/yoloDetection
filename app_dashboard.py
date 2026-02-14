@@ -8,8 +8,8 @@ import cv2
 import numpy as np
 import pandas as pd
 import streamlit as st
-import torch
 from PIL import Image
+from core.pipeline import MODEL_PATH_50E, load_model_bundle, run_inference_detailed
 
 st.set_page_config(
     page_title="SENTINEL Vision",
@@ -96,6 +96,14 @@ st.markdown(
 )
 
 DB_PATH = Path(tempfile.gettempdir()) / "sentinel_events.db"
+DEFAULT_UI_CONFIDENCE = 0.45
+DEBUG_TOP_N_DEFAULT = 20
+CLASS_COLORS_BGR: dict[str, tuple[int, int, int]] = {
+    "Casco": (0, 255, 255),
+    "Chaleco": (0, 255, 0),
+    "Persona_Sin_Equipo": (0, 0, 255),
+    "Peligro": (255, 0, 0),
+}
 
 
 def init_events_db():
@@ -199,53 +207,33 @@ def severity_for_label(label: str) -> str:
 
 @st.cache_resource
 def load_yolo():
-    project_root = Path(__file__).resolve().parent
-    model_path = project_root / "best.pt"
-    local_repo = project_root / "yolov5"
-    if not model_path.exists():
-        raise FileNotFoundError(f"No se encontro el modelo custom: {model_path}")
-
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
-    if local_repo.exists():
-        local_repo_path = str(local_repo.resolve())
-        model = torch.hub.load(local_repo_path, "custom", path=str(model_path), source="local")
-    else:
-        model = torch.hub.load("ultralytics/yolov5", "custom", path=str(model_path), trust_repo=True)
-
-    model.to(device)
-    model.conf = 0.40
-    model.eval()
-    return model, device
+    """Cached loader for Streamlit runtime."""
+    return load_model_bundle_uncached()
 
 
-def run_inference(image_rgb: np.ndarray, conf_threshold: float) -> tuple[np.ndarray, pd.DataFrame]:
-    model, _device = load_yolo()
-    model.conf = conf_threshold
-    image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
-    results = model(image_bgr)
-    detections = results.pandas().xyxy[0]
-    detections = detections[detections["confidence"] >= conf_threshold].copy()
+def load_model_bundle_uncached():
+    """Load model bundle using the pure, Streamlit-independent loader."""
+    return load_model_bundle(weights_path=MODEL_PATH_50E)
 
-    annotated = image_bgr.copy()
-    for _, det in detections.iterrows():
-        x1, y1, x2, y2 = int(det["xmin"]), int(det["ymin"]), int(det["xmax"]), int(det["ymax"])
-        label = str(det["name"])
-        confidence = float(det["confidence"])
 
-        severity = severity_for_label(label)
-        color = (255, 255, 255)
-        if severity == "ALTA":
-            color = (0, 0, 255)
-        elif severity == "MEDIA":
-            color = (0, 200, 255)
+def run_inference_with_model_bundle(
+    image_rgb: np.ndarray,
+    conf_threshold: float,
+    model_bundle: tuple,
+) -> tuple[np.ndarray, pd.DataFrame, pd.DataFrame]:
+    """Delegate to pure pipeline implementation."""
+    return run_inference_detailed(
+        image_bgr_or_rgb=image_rgb,
+        model_bundle=model_bundle,
+        conf_slider=conf_threshold,
+        iou=0.45,
+        class_colors_bgr=CLASS_COLORS_BGR,
+    )
 
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-        text = f"{label} {confidence:.2f}"
-        cv2.rectangle(annotated, (x1, y1 - 22), (x1 + 8 * len(text), y1), color, -1)
-        cv2.putText(annotated, text, (x1 + 4, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-    return annotated, detections
+def run_inference(image_rgb: np.ndarray, conf_threshold: float) -> tuple[np.ndarray, pd.DataFrame, pd.DataFrame]:
+    """UI helper that reuses cached model bundle."""
+    return run_inference_with_model_bundle(image_rgb=image_rgb, conf_threshold=conf_threshold, model_bundle=load_yolo())
 
 
 init_events_db()
@@ -256,17 +244,25 @@ if "last_result" not in st.session_state:
     st.session_state.last_result = None
 if "last_detections" not in st.session_state:
     st.session_state.last_detections = pd.DataFrame()
+if "last_raw_detections" not in st.session_state:
+    st.session_state.last_raw_detections = pd.DataFrame()
 if "last_file_hash" not in st.session_state:
     st.session_state.last_file_hash = None
 if "last_conf_used" not in st.session_state:
     st.session_state.last_conf_used = None
 
 st.sidebar.markdown("### Sentinel Controls")
-conf_slider = st.sidebar.slider("Confidence", 0.0, 1.0, 0.45)
+conf_slider = st.sidebar.slider("Confidence", 0.0, 1.0, DEFAULT_UI_CONFIDENCE)
 alert_toggle = st.sidebar.toggle("Enable alerts", value=True)
 cooldown_slider = st.sidebar.slider("Cooldown (s)", 1, 60, 8)
-if not (Path(__file__).resolve().parent / "best.pt").exists():
-    st.sidebar.error("Falta best.pt en la raiz del proyecto. Copialo para usar el modelo custom de EPI.")
+debug_model_output = st.sidebar.toggle("Debug Model Output", value=False)
+debug_top_n = st.sidebar.slider("Debug Top N", 5, 100, DEBUG_TOP_N_DEFAULT, 5) if debug_model_output else DEBUG_TOP_N_DEFAULT
+if not MODEL_PATH_50E.exists():
+    st.sidebar.error(f"Modelo 50e no encontrado: {MODEL_PATH_50E}")
+else:
+    st.sidebar.success(f"Modelo custom detectado: {MODEL_PATH_50E.name}")
+st.sidebar.caption("Model path in use")
+st.sidebar.code(str(MODEL_PATH_50E))
 if st.sidebar.button("Purge event history"):
     clear_events_db()
     st.sidebar.success("History cleared")
@@ -299,15 +295,11 @@ with col_left:
 
         if not same_input:
             image_rgb = np.array(Image.open(uploaded_file).convert("RGB"))
-            try:
-                with st.spinner("Loading model (first time) and running inference..."):
-                    annotated_bgr, detections_df = run_inference(image_rgb, conf_slider)
-            except FileNotFoundError as exc:
-                st.error(str(exc))
-                st.info("Copia best.pt en la raiz del proyecto y vuelve a ejecutar.")
-                st.stop()
+            with st.spinner("Loading model (first time) and running inference..."):
+                annotated_bgr, detections_df, raw_detections_df = run_inference(image_rgb, conf_slider)
             st.session_state.last_result = annotated_bgr
             st.session_state.last_detections = detections_df
+            st.session_state.last_raw_detections = raw_detections_df
             st.session_state.last_file_hash = file_hash
             st.session_state.last_conf_used = conf_slider
         else:
@@ -336,6 +328,16 @@ with col_left:
             view_df = det_df[["name", "confidence", "xmin", "ymin", "xmax", "ymax"]].copy()
             view_df["confidence"] = (view_df["confidence"] * 100).round(2).astype(str) + "%"
             st.dataframe(view_df, use_container_width=True, hide_index=True)
+
+        if debug_model_output:
+            st.markdown('<div class="card"><h3>Debug Model Output</h3></div>', unsafe_allow_html=True)
+            raw_df = st.session_state.last_raw_detections
+            if raw_df.empty:
+                st.caption("No raw detections returned by the model.")
+            else:
+                debug_df = raw_df[["name", "confidence", "xmin", "ymin", "xmax", "ymax"]].copy()
+                debug_df = debug_df.sort_values("confidence", ascending=False).head(debug_top_n)
+                st.dataframe(debug_df, use_container_width=True, hide_index=True)
 
 with col_right:
     metrics = get_event_metrics()
