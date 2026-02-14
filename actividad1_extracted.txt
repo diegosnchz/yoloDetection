@@ -1,0 +1,228 @@
+
+===== PAGE 1 =====
+
+Asignatura Datos del alumno Fecha 
+Programación con IA 
+Apellidos:  
+ 
+Nombre: 
+ 
+ 
+ Actividades 
+1 
+ 
+ 
+Detección de objetos con YOLOv5 
+ 
+Contexto de la actividad 
+En esta práctica iniciaremos el desarrollo de un sistema de visión artificial completo. 
+El objetivo no es únicamente entrenar un modelo, sino construir la primera versión 
+funcional que posteriormente será desplegada, evaluada y mejorada en las siguientes 
+sesiones. 
+En esta primera fase nos centraremos en el entrenamiento y validación del modelo 
+base, que servirá como punto de partida para su integración en una aplicación real. 
+ 
+Objetivos  
+ 
+En esta actividad se desarrollará la primera versión de un detector de objetos 
+personalizado mediante fine-tuning de YOLOv5. 
+Al finalizar esta fase el alumno dispondrá de: 
+• Un modelo entrenado para resolver un problema real definido por él mismo. 
+• Un dataset estructurado y documentado. 
+• Una evaluación objetiva del rendimiento del modelo. 
+• Un modelo listo para ser utilizado en un sistema posterior de inferencia. 
+Este modelo será utilizado en la siguiente fase de la asignatura para su integración en 
+una aplicación. 
+ 
+Pautas de elaboración 
+ 
+En esta práctica tendrás que definir tu propio problema y detectar tus propios 
+objetos. El profesor  te dará un dataset de ejemplo para detectar daños en paneles 
+solares y, con base en eso, tienes que definir tu propio problema, obtener tu propio 
+
+===== PAGE 2 =====
+
+Asignatura Datos del alumno Fecha 
+Programación con IA 
+Apellidos:  
+ 
+Nombre: 
+ 
+ 
+ Actividades 
+2 
+dataset de imágenes y hacer el fine-tuning de YOLOv5 para crear tu propio detector 
+de objetos. Una vez creado, debes evaluar los resultados obtenidos. 
+ 
+1. Plantea un problema para resolver que se pueda hacer mediante la detección de 
+objetos. 
+2. Busca o crea tu propio dataset. Dicho dataset tiene que estar anotado en el 
+formato que usa YOLO. 
+• Si decides buscar un dataset, puedes utilizar repositorios como, por ejemplo, 
+Kaggle (https://www.kaggle.com/). 
+• Si decides crear tu dataset, puedes utilizar una herramienta como, por ejemplo, 
+Make Sense (https://www.makesense.ai/), para hacer las anotaciones sobre las 
+imágenes.  
+3. Accede al repositorio https://github.com/ultralytics/yolov5 donde se encuentra el 
+modelo.  
+ 
+4. Recomiendo que uses Google Colab (te puedes conectar a una instancia local si 
+necesitas usar tu estructura de archivos o más potencia) o un Jupyter Notebook 
+local (pero tendrás que configurar muchas dependencias). Se asume a partir de 
+ahora el uso de Google Colab. 
+ 
+5. Abre en Colab el YOLOv5 Tutorial. 
+ 
+6. Ejecuta el clone del git de YOLOv5 que está justo al principio, en la sección Setup. 
+ 
+7. Sube tu dataset a Colab. Puedes subirlo como .zip y descomprimir dentro. Ten en 
+cuenta la siguiente estructura de ficheros: 
+• data/images/train: imágenes para entrenar el modelo. 
+• data/images/val: imágenes para validar el modelo. 
+• data/label/train: anotaciones de las imágenes train (.txt). 
+
+===== PAGE 3 =====
+
+Asignatura Datos del alumno Fecha 
+Programación con IA 
+Apellidos:  
+ 
+Nombre: 
+ 
+ 
+ Actividades 
+3 
+• data/label/val: anotaciones de las imágenes val (.txt). 
+•  
+ 
+8. Usa de base el fichero yolov5/data/coco128.yaml. Lo tendrás disponible después 
+de hacer el clone de YOLOv5. Sobre el contenido de coco128.yaml indica tu 
+número de clases y la etiqueta de cada clase. Guárdalo con otro nombre, por 
+ejemplo, personalizado.yaml 
+• Haz un train con el archivo personalizado.yaml. Para ello , en el apartado 3 del 
+YOLOv5 Tutorial modifica la instrucción: !python train.py --img 640 --batch 16 -
+-epochs 3 --data personalizado.yaml --weights yolov5s.pt –cache 
+ 
+9. Si tienes problemas de memoria ejecutando la instrucción del paso anterior , 
+prueba a bajar el batch_size. Ten en cuenta que en la línea anterior ejecutas solo 
+tres epochs. Sería conveniente que, una vez vieras que su ejecución es correcta, 
+subas el número de epochs al menos a cincuenta, para obtener mejores 
+resultados.  
+ 
+10. En yolov5/runs/exp encontrarás la salida de los resultados de validación. Además, 
+en la ejecución verás métricas de evaluación. Crea un informe de validación 
+usando la información que consideres relevante.  
+ 
+11. Haz inferencia de los datos. Sube nuevas imágenes (o vídeos) y, apoyándote en las 
+instrucciones de la sección «1. Inference», del tutorial de YOLOv5 haz tus propias 
+detecciones de objetos.  
+ 
+Criterios de evaluación 
+ 
+Se evaluarán: 
+ 
+
+===== PAGE 4 =====
+
+Asignatura Datos del alumno Fecha 
+Programación con IA 
+Apellidos:  
+ 
+Nombre: 
+ 
+ 
+ Actividades 
+4 
+ Resultados obtenidos, acorde con lo indicado en el notebook. 
+ Código: se entrega compilado y debe ser claro y conciso. Se debe apoyar con 
+comentarios que clarifiquen lo que se hace en las partes más complejas. 
+ Claridad de las conclusiones y comentarios. 
+ 
+Extensión y formato  
+ 
+ Notebook en formato .ipynb 
+ Fichero .ipynb con los resultados del notebook YOLOv5_alumnos. 
+ Fichero PDF con los resultados del notebook YOLOv5_alumnos (se puede obtener 
+directamente desde los notebooks «imprimiendo» en PDF). 
+ En caso de que falte el notebook o el fichero PDF, se penalizará con un punto en la 
+nota final del trabajo. 
+Importante: el fichero YOLOv5_alumnos.pdf y YOLOv5_alumnos.ipyb debe indicar 
+claramente todas las secciones que se especifican en los apartados de rúbrica. Puedes 
+basarte si quieres en el .ipynb del YOLOv5 Tutorial, pero modifícalo para dejar solo lo que 
+exige la actividad. Obviamente, puedes eliminar las secciones que consideres necesario 
+y, sobre todo, crea nuevas secciones claras donde des respuesta a lo que se exige en la 
+rúbrica. 
+ 
+Continuidad del proyecto 
+El modelo desarrollado en esta actividad no constituye el resultado final del proyecto. 
+En las siguientes sesiones se trabajará sobre este mismo modelo para: 
+• Integrarlo en una aplicación capaz de procesar nuevas imágenes o vídeo. 
+• Analizar su rendimiento en un entorno más realista. 
+• Estudiar cómo mejorar el modelo mediante nuevos datos y ajustes. 
+• Comprender el ciclo completo de desarrollo de sistemas basados en IA. 
+Por tanto, es importante conservar tanto el dataset como los pesos generados 
+durante el entrenamiento.  
+
+===== PAGE 5 =====
+
+Asignatura Datos del alumno Fecha 
+Programación con IA 
+Apellidos:  
+ 
+Nombre: 
+ 
+ 
+ Actividades 
+5 
+Rúbrica 
+ 
+Detección de 
+objetos con 
+YOLOv5 
+Descripción 
+Puntuación 
+máxima   
+(puntos) 
+Peso 
+% 
+Definición del 
+problema 
+Creas un modelo de detección de objetos para 
+resolver un problema. Especifica exactamente qué 
+problema piensas resolver que te ha llevado a crear 
+este modelo de detección de objetos personalizado.  
+1,5 15 % 
+Creación / 
+obtención del 
+dataset 
+Puedes descargar un dataset ya etiquetado en 
+formato YOLO. No obstante, si creas tú el dataset, 
+puedes obtener un punto en esta sección 
+1 10 % 
+Proceso de 
+entrenamiento 
+del modelo 
+Documenta el proceso de entrenamiento del 
+modelo paso a paso explicándolo con tus propias 
+palabras. Este proceso es igual al explicado en clase 
+adaptado a tu problema 
+2 20 % 
+Informe de 
+resultados del 
+modelo 
+Aquí debes presentar un informe detallado de los 
+resultados obtenidos tras el entrenamiento de tu 
+modelo. Haz una parte en la que te centres en los 
+datos objetivos obtenidos y otra parte donde 
+detalles si esos resultados son buenos o no para tu 
+problema argumentando los motivos 
+3,5 35 % 
+Inferencia del 
+modelo 
+Documenta el proceso de inferencia del modelo con 
+unos datos finales (imágenes o vídeos) y explica 
+como lo has hecho con tus propias palabras.  
+2 20 % 
+  10 100 % 
+ 
+ 
